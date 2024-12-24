@@ -1,39 +1,49 @@
-import type { Request, Response, NextFunction } from 'express';
+import { AuthenticationError } from 'apollo-server-express';
 import jwt from 'jsonwebtoken';
-
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 interface JwtPayload {
-  _id: unknown;
+  _id: string;
   username: string;
-  email: string,
+  email: string;
 }
 
-export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
+const secretKey = process.env.JWT_SECRET_KEY || '';
 
-  if (authHeader) {
-    const token = authHeader.split(' ')[1];
+/**
+ * Middleware function to extract and verify the JWT token for GraphQL context.
+ * @param token - The JWT token passed in the Authorization header.
+ * @returns - Decoded user data if the token is valid, otherwise throws an AuthenticationError.
+ */
+export const authenticateToken = (token: string | undefined): JwtPayload => {
+  if (!token) {
+    throw new AuthenticationError('Authorization token is required.');
+  }
 
-    const secretKey = process.env.JWT_SECRET_KEY || '';
+  try {
+    // Remove the "Bearer " prefix if present
+    const formattedToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
 
-    jwt.verify(token, secretKey, (err, user) => {
-      if (err) {
-        return res.sendStatus(403); // Forbidden
-      }
+    // Verify and decode the token
+    const user = jwt.verify(formattedToken, secretKey) as JwtPayload;
 
-      req.user = user as JwtPayload;
-      return next();
-    });
-  } else {
-    res.sendStatus(401); // Unauthorized
+    return user;
+  } catch (err) {
+    throw new AuthenticationError('Invalid or expired token.');
   }
 };
 
-export const signToken = (username: string, email: string, _id: unknown) => {
+/**
+ * Function to generate a JWT token for the user.
+ * @param username - The username of the user.
+ * @param email - The email of the user.
+ * @param _id - The user's unique ID.
+ * @returns - A signed JWT token.
+ */
+export const signToken = (username: string, email: string, _id: string): string => {
   const payload = { username, email, _id };
-  const secretKey = process.env.JWT_SECRET_KEY || '';
 
   return jwt.sign(payload, secretKey, { expiresIn: '1h' });
 };
